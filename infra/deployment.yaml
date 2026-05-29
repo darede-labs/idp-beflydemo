@@ -4,7 +4,7 @@ metadata:
   name: beflydemo
   namespace: beflydemo
 spec:
-  replicas: 0
+  replicas: 1
   selector:
     matchLabels:
       app: beflydemo
@@ -56,7 +56,7 @@ spec:
       
       containers:
         - name: api
-          image: 948881762705.dkr.ecr.us-east-1.amazonaws.com/idp-beflydemo:latest
+          image: 948881762705.dkr.ecr.us-east-1.amazonaws.com/idp-beflydemo:sha-a09b387b99658056f07f16aa8da8d69b597e4563
           imagePullPolicy: Always
           command:
             - sh
