@@ -1,0 +1,125 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: beflydemo
+  namespace: beflydemo
+spec:
+  replicas: 0
+  selector:
+    matchLabels:
+      app: beflydemo
+  template:
+    metadata:
+      labels:
+        app: beflydemo
+    spec:
+      # Wait for database to be ready before starting the application
+      initContainers:
+        - name: wait-for-db
+          image: alpine:3.19
+          command:
+            - sh
+            - -c
+            - |
+              apk add --no-cache netcat-openbsd -q
+              until [ -f /db-conn/endpoint ] && [ -f /db-conn/port ]; do
+                echo "Waiting for DB connection secret files..."
+                sleep 5
+              done
+              DB_HOST="$(cat /db-conn/endpoint | cut -d: -f1)"
+              DB_PORT="$(cat /db-conn/port)"
+              echo "Waiting for DB at $DB_HOST:$DB_PORT..."
+              until nc -z "$DB_HOST" "$DB_PORT"; do
+                echo "DB not reachable yet, sleeping 2s"
+                sleep 2
+              done
+              echo "DB is reachable!"
+          volumeMounts:
+            - name: db-conn
+              mountPath: /db-conn
+              readOnly: true
+          resources:
+            requests:
+              cpu: "10m"
+              memory: "16Mi"
+            limits:
+              cpu: "50m"
+              memory: "32Mi"
+      
+      # Security context for the pod
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      
+      containers:
+        - name: api
+          image: 948881762705.dkr.ecr.us-east-1.amazonaws.com/idp-beflydemo:latest
+          imagePullPolicy: Always
+          command:
+            - sh
+            - -c
+            - |
+              until [ -f /db-conn/endpoint ] && [ -f /db-conn/port ] && [ -f /db-conn/username ] && [ -f /db-conn/password ]; do
+                echo "Waiting for DB connection secret files..."
+                sleep 5
+              done
+              export DB_HOST="$(cat /db-conn/endpoint | cut -d: -f1)"
+              export DB_PORT="$(cat /db-conn/port)"
+              export DB_USER="$(cat /db-conn/username)"
+              export DB_PASSWORD="$(cat /db-conn/password)"
+              exec npm start
+          ports:
+            - containerPort: 3000
+          env:
+            - name: PORT
+              value: "3000"
+            - name: DB_ENGINE
+              value: "aurora-postgresql"
+            - name: DB_SSL
+              value: "true"
+            - name: DB_NAME
+              value: "app"
+          volumeMounts:
+            - name: db-conn
+              mountPath: /db-conn
+              readOnly: true
+          
+          # Container security context
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 1000
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: false  # Set to true if app doesn't need write access
+          
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          resources:
+
+            requests:
+              cpu: "200m"
+              memory: "256Mi"
+            limits:
+              cpu: "600m"
+              memory: "512Mi"
+
+      volumes:
+        - name: db-conn
+          secret:
+            secretName: beflydemo-db-conn
+            optional: true

@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: crossplane-claim-quota
+  namespace: beflydemo
+spec:
+  hard:
+    count/staticwebsites.platform.darede.io: "2"
+    count/auroras.platform.darede.io: "1"
+    count/httpapis.platform.darede.io: "1"

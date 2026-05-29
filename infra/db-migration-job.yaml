@@ -1,0 +1,72 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: beflydemo-db-migrate
+  namespace: beflydemo
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+spec:
+  backoffLimit: 3
+  activeDeadlineSeconds: 1800
+  template:
+    metadata:
+      labels:
+        app: beflydemo-migrate
+    spec:
+      restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: migrate
+
+          image: postgres:15-alpine
+          command:
+            - sh
+            - -c
+            - |
+              MAX_ATTEMPTS=360
+              ATTEMPT=0
+              until [ -f /db-conn/endpoint ] && [ -f /db-conn/port ] && [ -f /db-conn/username ] && [ -f /db-conn/password ]; do
+                ATTEMPT=$((ATTEMPT + 1))
+                if [ "$ATTEMPT" -ge "$MAX_ATTEMPTS" ]; then
+                  echo "TIMEOUT: Aurora not ready after 30 min. Re-run ArgoCD sync manually."
+                  exit 1
+                fi
+                echo "Waiting for DB connection secret... ($ATTEMPT/$MAX_ATTEMPTS)"
+                sleep 5
+              done
+              DB_HOST="$(cat /db-conn/endpoint | cut -d: -f1)"
+              DB_PORT="$(cat /db-conn/port)"
+              DB_USER="$(cat /db-conn/username)"
+              DB_PASS="$(cat /db-conn/password)"
+              DB_NAME="app"
+              export PGPASSWORD="$DB_PASS"
+              echo "Running migration on PostgreSQL $DB_HOST:$DB_PORT/$DB_NAME..."
+              psql "host=$DB_HOST port=$DB_PORT user=$DB_USER dbname=$DB_NAME sslmode=require" <<'SQL'
+              CREATE TABLE IF NOT EXISTS users (
+                id BIGSERIAL PRIMARY KEY,
+                email TEXT UNIQUE NOT NULL,
+                created_at TIMESTAMP DEFAULT NOW()
+              );
+              SQL
+              echo "Migration complete."
+
+          volumeMounts:
+            - name: db-conn
+              mountPath: /db-conn
+              readOnly: true
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"
+      volumes:
+        - name: db-conn
+          secret:
+            secretName: beflydemo-db-conn
+            optional: true

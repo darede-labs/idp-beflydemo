@@ -1,0 +1,28 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: beflydemo-infra
+  namespace: argocd
+  labels:
+    platform.darede.io/app: "beflydemo"
+    platform.darede.io/component: "infra"
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+    platform.darede.io/provisioningRunId: "21fbd4bf-642c-41c0-8737-d99cc1033b5b"
+spec:
+  project: apps
+  source:
+    repoURL: https://github.com/darede-labs/idp-beflydemo.git
+    targetRevision: main
+    path: infra
+    directory:
+      include: '{namespace.yaml,resource-quota.yaml,aurora-master-password-secret.yaml,aurora-claim.yaml,staticwebsite-claim.yaml,db-migration-job.yaml}'
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: beflydemo
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
