@@ -1,0 +1,21 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: beflydemo
+  namespace: argocd
+  labels:
+    platform.darede.io/app: "beflydemo"
+    platform.darede.io/component: "app-of-apps"
+spec:
+  project: apps
+  source:
+    repoURL: https://github.com/darede-labs/idp-beflydemo.git
+    targetRevision: main
+    path: infra/argocd/apps
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
